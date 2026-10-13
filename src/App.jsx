@@ -45,7 +45,7 @@ function Login() {
   return <div className="login-wrap">
     <div className="login-box">
       <h1>Investor CRM</h1>
-      <div className="sub">Together AI SPV</div>
+      <div className="sub">Matrix Capital</div>
       <form onSubmit={async ev => {
         ev.preventDefault()
         const { error } = await sb.auth.signInWithPassword({ email: e, password: p })
@@ -196,11 +196,11 @@ function CRM() {
     
     <main className="main">
       <div className="topbar">
-        <span className="crumb">Matrix Capital / Fund of Funds / <b>LP outreach</b></span>
+        <span className="crumb">Matrix Capital / Fund of Funds / <b>{deal?.name || 'LP outreach'}</b></span>
       </div>
-      <div className="title">🧭 Emerging managers: outreach</div>
+      <div className="title">🧭 {deal?.name || 'Emerging managers: outreach'}</div>
       <div className="subtitle">
-        {deal?.name || 'Investor CRM'} · Цель {fmt(target)} · мин чек {fmt(deal?.min_check)}
+        Цель {fmt(target)} · мин чек {fmt(deal?.min_check)}
       </div>
       
       <div className="stats">
