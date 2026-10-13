@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 const sb = createClient('https://uqfvqzmhlipxviumuhlb.supabase.co', 'sb_publishable_ek9FzdFei3m3fMTiRctDXg_zNmizBud')
 
 const STATUSES = ['не связывались', 'связаться', 'связались', 'ответили', 'встреча', 'коммит', 'отказ']
-const TYPES = ['сотрудник/alumni', 'family office', 'фонд', 'синдикат', 'синдикат/канал', 'angel', 'платформа']
+const TYPES = ['сотрудник/alumni', 'family office', 'синдикат', 'синдикат/канал', 'angel']
 const PRIOS = ['высокий', 'средний', 'низкий']
 
 const STATUS_COLORS = {
@@ -132,6 +132,25 @@ function CRM() {
     setSel(new Set())
   }
   
+  const bulkDelete = async () => {
+    if (!confirm(`Удалить ${sel.size} записей? Это действие нельзя отменить.`)) return
+    const ids = Array.from(sel)
+    for (const id of ids) {
+      await sb.from('investors').delete().eq('id', id)
+    }
+    setRows(rows => rows.filter(r => !sel.has(r.id)))
+    setSel(new Set())
+  }
+  
+  const deleteRecord = async (id) => {
+    const r = rows.find(x => x.id === id)
+    if (!r) return
+    if (!confirm(`Удалить ${r.name}? Это действие нельзя отменить.`)) return
+    await sb.from('investors').delete().eq('id', id)
+    setRows(rows => rows.filter(x => x.id !== id))
+    setOpen(null)
+  }
+  
   const committed = rows.reduce((a, r) => a + Number(r.committed_amount || 0), 0)
   const target = Number(deal?.target_amount || 1000000)
   const counts = Object.fromEntries(STATUSES.map(s => [s, rows.filter(r => r.status === s).length]))
@@ -246,6 +265,7 @@ function CRM() {
             <option value="">Изменить статус…</option>
             {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
+          <button onClick={bulkDelete} style={{ background: 'var(--danger)', color: '#fff', padding: '6px 12px', fontWeight: 500 }}>Удалить</button>
           <button onClick={() => setSel(new Set())}>✕</button>
         </div>}
         
@@ -262,7 +282,7 @@ function CRM() {
     </main>
     
     <div className={`scrim ${openRec ? 'show' : ''}`} onClick={() => setOpen(null)}></div>
-    {openRec && <Panel r={openRec} onClose={() => setOpen(null)} update={update} setStatus={setStatus} />}
+    {openRec && <Panel r={openRec} onClose={() => setOpen(null)} update={update} setStatus={setStatus} deleteRecord={deleteRecord} />}
     {menuState && <StatusMenu {...menuState} onClose={() => setMenuState(null)} onSelect={setStatus} />}
   </div>
 }
@@ -282,6 +302,7 @@ function TableView({ rows, sort, setSort, sel, setSel, setOpen, setMenuState, Th
         <Th k="region">Регион</Th>
         <Th k="priority">Приоритет</Th>
         <Th k="status">Статус</Th>
+        <Th k="why_contact">Почему написать</Th>
         <Th k="typical_check">Чек</Th>
         <Th k="last_contacted_at">Последний контакт</Th>
       </tr>
@@ -308,6 +329,7 @@ function TableView({ rows, sort, setSort, sel, setSel, setOpen, setMenuState, Th
         <td onClick={e => { e.stopPropagation(); setMenuState({ r, anchor: e.currentTarget }) }}>
           <Pill s={r.status} />
         </td>
+        <td><span className="ell" style={{ maxWidth: 280 }}>{r.why_contact || ''}</span></td>
         <td>{r.typical_check || r.est_size}</td>
         <td style={{ color: 'var(--text3)', fontSize: 12 }}>
           {r.last_contacted_at ? new Date(r.last_contacted_at).toLocaleDateString('ru') : ''}
@@ -384,10 +406,12 @@ function StatusMenu({ r, anchor, onClose, onSelect }) {
   </div>
 }
 
-function Panel({ r, onClose, update, setStatus }) {
+function Panel({ r, onClose, update, setStatus, deleteRecord }) {
   const [acts, setActs] = useState([])
   const [note, setNote] = useState('')
   const [notes, setNotes] = useState(r.owner_notes || '')
+  const [profile, setProfile] = useState(r.profile || '')
+  const [whyContact, setWhyContact] = useState(r.why_contact || '')
   const [amt, setAmt] = useState(r.committed_amount || 0)
   const [editField, setEditField] = useState(null)
   
@@ -398,6 +422,8 @@ function Panel({ r, onClose, update, setStatus }) {
   
   useEffect(() => {
     setNotes(r.owner_notes || '')
+    setProfile(r.profile || '')
+    setWhyContact(r.why_contact || '')
     setAmt(r.committed_amount || 0)
     loadA()
   }, [r.id])
@@ -408,13 +434,7 @@ function Panel({ r, onClose, update, setStatus }) {
     <div className="p-top">
       <button className="btn" onClick={onClose}>✕ Закрыть</button>
       <span className="spacer"></span>
-      <button className="btn danger" onClick={async () => {
-        if (confirm(`Удалить ${r.name}?`)) {
-          await sb.from('investors').delete().eq('id', r.id)
-          onClose()
-          window.location.reload()
-        }
-      }}>Удалить</button>
+      <button className="btn danger" onClick={() => deleteRecord(r.id)}>Удалить</button>
     </div>
     <div className="p-body">
       <div className="p-title">
@@ -424,6 +444,16 @@ function Panel({ r, onClose, update, setStatus }) {
       <div style={{ marginBottom: 12 }}>
         <Pill s={r.status} />
       </div>
+      
+      <div className="sec-h">Кто это</div>
+      {editField === 'profile' ? <textarea className="edit-input" value={profile} onChange={e => setProfile(e.target.value)}
+        onBlur={() => { update(r.id, { profile }); setEditField(null) }} autoFocus style={{ marginBottom: 16 }} /> :
+        <div className="summary" onClick={() => setEditField('profile')} style={{ marginBottom: 16 }}>{profile || 'Нажмите, чтобы добавить описание'}</div>}
+      
+      <div className="sec-h">Почему написать</div>
+      {editField === 'why_contact' ? <textarea className="edit-input" value={whyContact} onChange={e => setWhyContact(e.target.value)}
+        onBlur={() => { update(r.id, { why_contact: whyContact }); setEditField(null) }} autoFocus style={{ marginBottom: 16 }} /> :
+        <div className="summary" onClick={() => setEditField('why_contact')} style={{ marginBottom: 16 }}>{whyContact || 'Нажмите, чтобы добавить причину'}</div>}
       
       <div className="props">
         {prop('Тип', r.type)}
